@@ -19,7 +19,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const VERSION = "2026-10-02.1";
+const VERSION = "2026-10-02.2";
 const argv = process.argv.slice(2);
 const flag = (name) => argv.includes(name);
 const opt = (name) => {
@@ -251,10 +251,25 @@ function scanHistory(repo) {
       if (hits.length) bad.set(sha, { paths: [...wanted.get(sha)], what: hits[0].what });
     }
   }
+  // security/known-bad-history.txt: blob ids (one per line, # comments) of OLD infected objects that are still in
+  // history and wait for a purge. They are reported as LOW instead of HIGH so CI stays usable. This never applies to
+  // files at the tip of the working tree, and never to a blob that is not listed.
+  const allow = [];
+  try {
+    for (const l of fs.readFileSync(path.join(repo, "security", "known-bad-history.txt"), "utf8").split("\n")) {
+      const t = l.replace(/#.*/, "").trim();
+      if (/^[0-9a-f]{7,40}$/i.test(t)) allow.push(t.toLowerCase());
+    }
+  } catch { /* none (bare repos have no working tree: use the committed copy) */ }
+  if (!allow.length) {
+    const r = git(repo, ["show", "HEAD:security/known-bad-history.txt"]);
+    if (r.ok) for (const l of r.out.split("\n")) { const t = l.replace(/#.*/, "").trim(); if (/^[0-9a-f]{7,40}$/i.test(t)) allow.push(t.toLowerCase()); }
+  }
   for (const [sha, info] of bad) {
+    const listed = allow.some((a) => sha.startsWith(a));
     const first = git(repo, ["log", "--all", "-m", "--reverse", "--format=%h %an %ad", "--date=short", `--find-object=${sha}`]).out.split("\n")[0].trim();
     const tips = git(repo, ["for-each-ref", "--format=%(refname:short)", "--contains", first.split(" ")[0] || sha, "refs/heads", "refs/remotes"]).out.trim().split("\n").filter(Boolean);
-    add("HIGH", "history", `${repo} :: ${info.paths.join(", ")} (blob ${sha.slice(0, 8)})`, `${info.what}; introduced by ${first || "?"}; reachable from ${tips.length} ref(s)${tips.length ? ": " + tips.slice(0, 6).join(", ") + (tips.length > 6 ? ", ..." : "") : ""}`,
+    add(listed ? "LOW" : "HIGH", "history", `${repo} :: ${info.paths.join(", ")} (blob ${sha.slice(0, 8)})`, `${listed ? "KNOWN OLD INFECTED OBJECT, purge pending (listed in security/known-bad-history.txt); " : ""}${info.what}; introduced by ${first || "?"}; reachable from ${tips.length} ref(s)${tips.length ? ": " + tips.slice(0, 6).join(", ") + (tips.length > 6 ? ", ..." : "") : ""}`,
       "do not check these refs out or push them; ask the repo owner for a history purge (git filter-repo) and re-clone afterwards");
   }
   // Forged-amend heuristic: the worm copies the author timestamp into the committer field but stamps it UTC-7/-8.
