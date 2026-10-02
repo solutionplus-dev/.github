@@ -1,0 +1,23 @@
+name: Security self-check
+
+# Runs security/selfcheck.mjs (PolinRider / Shai-Hulud indicators) on every
+# push to any branch and on every pull request. Red = do not merge.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  selfcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Run self-check (working tree + full history)
+        run: node security/selfcheck.mjs --ci
