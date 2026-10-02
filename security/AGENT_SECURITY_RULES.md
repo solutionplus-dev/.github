@@ -102,3 +102,19 @@ node security/selfcheck.mjs --ci               # what CI runs
 
 CI runs the same check on every push and pull request
 (`.github/workflows/security-selfcheck.yml`). A red check means: do not merge.
+
+## 5. Repos whose history is not purged yet
+
+Some repositories still carry old infected objects in their git history
+(they are rewritten later, in an agreed freeze window, because rewriting
+breaks every open pull request and clone). Their blob ids are listed in
+`security/known-bad-history.txt`; the self-check reports them as `LOW` so CI
+stays green and people keep reading the output.
+
+- Nothing is ever added to that file for a file that exists in the current
+  working tree. Those are always HIGH.
+- Do not check out or build very old commits of these repos, and never copy
+  a file from old history into the working tree.
+- Never add entries to `known-bad-history.txt` yourself to silence a
+  failure. Only the repo owner does, after verifying the blob is old history.
+
